@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>射箭姿态评估 Web 版</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
+      <div class="loading-card">
+        <p class="loading-eyebrow">正在分析视频</p>
+        <h2 id="loadingTitle">系统正在处理中，请稍候</h2>
+        <p class="loading-text" id="loadingText">正在读取视频并提取关键动作帧。</p>
+        <div class="loading-bar">
+          <div class="loading-bar-fill"></div>
+        </div>
+        <div class="loading-steps">
+          <span class="active" id="loadingStep">步骤 1 / 4</span>
+          <span>请不要关闭页面</span>
+        </div>
+      </div>
+    </div>
+    <main class="page">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">ARCHERY FORM CHECK</p>
+          <h1>上传一段射箭视频，系统会自动帮你看动作</h1>
+          <p class="summary">你可以直接上传射箭过程视频。系统会自动抓取关键动作，生成人体骨架图，给出姿态评分和改进建议，适合教练、学生和家长直接查看。</p>
+          <div class="hero-points">
+            <span>自动识别起手与射箭动作</span>
+            <span>同时查看原图叠加骨架和纯骨架图</span>
+            <span>支持循环动态预览</span>
+          </div>
+        </div>
+        <form class="upload-card" id="analyzeForm" action="/analyze" method="post" enctype="multipart/form-data">
+          <label class="field">
+            <span>运动员姓名（可选）</span>
+            <input type="text" name="athlete_name" placeholder="例如：zhangsan">
+          </label>
+          <label class="field">
+            <span>上传射箭视频</span>
+            <input type="file" name="video" accept=".mp4,.mov,.avi,.mkv,.webm" required>
+          </label>
+          <button type="submit" id="submitButton">开始分析</button>
+          <p class="hint">建议上传包含完整起手到射箭过程的视频。视频越清晰、人物越完整，分析效果通常越稳定。</p>
+        </form>
+      </section>
+
+      {% if error %}
+      <section class="message error">{{ error }}</section>
+      {% endif %}
+
+      {% if notice %}
+      <section class="message notice">{{ notice }}</section>
+      {% endif %}
+
+      {% if result %}
+      <section class="results">
+        <div class="score-panel">
+          <p class="score-label">综合评分</p>
+          <p class="score-value">{{ result.score }}</p>
+          <p class="score-grade">{{ result.grade }}</p>
+          <p class="meta">前手臂 {{ result.front_arm_angle }}° / 后手臂 {{ result.behind_arm_angle }}°</p>
+          <p class="meta">{{ result.handedness }}</p>
+        </div>
+
+        <div class="details-panel">
+          <h2>动作分析结果</h2>
+          <div class="facts">
+            <p>总帧数：{{ result.total_frames }}</p>
+            <p>参与分析帧数：{{ result.processed_frame_count }}</p>
+            <p>起手帧编号：{{ result.start_frame_number }}</p>
+            <p>射箭帧编号：{{ result.key_frame_number }}</p>
+            {% if result.athlete_name %}
+            <p>记录姓名：{{ result.athlete_name }}</p>
+            {% endif %}
+          </div>
+
+          <div class="tips">
+            <div>
+              <h3>需要改进</h3>
+              <ul>
+                {% for item in result.issues %}
+                <li>{{ item }}</li>
+                {% else %}
+                <li>当前未发现明显问题。</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div>
+              <h3>正向建议</h3>
+              <ul>
+                {% for item in result.suggestions %}
+                <li>{{ item }}</li>
+                {% else %}
+                <li>暂无额外建议。</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {% if result.loop_previews.combined or result.loop_previews.skeleton %}
+      <section class="preview-panel">
+        <div class="panel-head">
+          <h2>动作循环预览</h2>
+          <p>可以直观看到动作从起手到射箭的连贯变化。</p>
+        </div>
+        <div class="image-grid">
+          {% if result.loop_previews.combined %}
+          <article>
+            <h3>原图叠加骨架循环图</h3>
+            <img src="{{ url_for('files', filename=result.loop_previews.combined) }}" alt="原图叠加骨架循环图">
+          </article>
+          {% endif %}
+          {% if result.loop_previews.skeleton %}
+          <article>
+            <h3>纯骨架循环图</h3>
+            <img src="{{ url_for('files', filename=result.loop_previews.skeleton) }}" alt="纯骨架循环图">
+          </article>
+          {% endif %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="node-panel">
+        <div class="panel-head">
+          <h2>关键动作节点</h2>
+          <p>系统默认展示起手阶段和射箭阶段，每个节点都提供原图叠加骨架和纯骨架图。</p>
+        </div>
+        <div class="node-grid">
+          {% for card in result.timeline_cards %}
+          <article class="node-card">
+            <div class="node-meta">
+              <h3>{{ card.label }}</h3>
+              <span>帧号 {{ card.frame_number }}</span>
+            </div>
+            <div class="node-images">
+              <figure>
+                <figcaption>原图叠加骨架</figcaption>
+                <img src="{{ url_for('files', filename=card.combined_image) }}" alt="{{ card.label }} 原图叠加骨架">
+              </figure>
+              <figure>
+                <figcaption>纯骨架图</figcaption>
+                <img src="{{ url_for('files', filename=card.skeleton_image) }}" alt="{{ card.label }} 纯骨架图">
+              </figure>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+
+      {% if result.charts %}
+      <section class="trend-panel">
+        <div class="panel-head">
+          <h2>历史趋势</h2>
+          <p>如果填写了姓名，系统会在本机保存记录，并生成趋势图。</p>
+        </div>
+        <div class="image-grid charts">
+          <article>
+            <h3>前手臂趋势</h3>
+            <img src="{{ url_for('files', filename=result.charts.front) }}" alt="前手臂趋势">
+          </article>
+          <article>
+            <h3>后手臂趋势</h3>
+            <img src="{{ url_for('files', filename=result.charts.behind) }}" alt="后手臂趋势">
+          </article>
+          <article>
+            <h3>评分趋势</h3>
+            <img src="{{ url_for('files', filename=result.charts.score) }}" alt="评分趋势">
+          </article>
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="decision-panel">
+        <div class="panel-head">
+          <h2>本次结果是否保存在本机</h2>
+          <p>如果选择不保存，只会撤销当前这一次分析产生的内容，不会影响其他人已经保存的数据。</p>
+        </div>
+        <form class="decision-actions" action="/result-action" method="post">
+          <input type="hidden" name="current_upload_path" value="{{ result.current_upload_path }}">
+          <input type="hidden" name="current_run_dir" value="{{ result.current_run_dir }}">
+          <input type="hidden" name="profile_file" value="{{ result.profile_file if result.profile_file else '' }}">
+          <input type="hidden" name="profile_previous_line_count" value="{{ result.profile_previous_line_count if result.profile_previous_line_count is defined else '' }}">
+          <button type="submit" name="action" value="save" class="secondary-button">保存本次结果</button>
+          <button type="submit" name="action" value="discard" class="danger-button">不保存本次结果</button>
+        </form>
+      </section>
+      {% endif %}
+    </main>
+    <script>
+      (function () {
+        const form = document.getElementById("analyzeForm");
+        const overlay = document.getElementById("loadingOverlay");
+        const loadingText = document.getElementById("loadingText");
+        const loadingStep = document.getElementById("loadingStep");
+        const submitButton = document.getElementById("submitButton");
+
+        if (!form || !overlay || !loadingText || !loadingStep || !submitButton) {
+          return;
+        }
+
+        const messages = [
+          ["步骤 1 / 4", "正在读取视频并提取关键动作帧。"],
+          ["步骤 2 / 4", "正在识别人像关键点并生成骨架图。"],
+          ["步骤 3 / 4", "正在计算动作角度并整理评分结果。"],
+          ["步骤 4 / 4", "正在生成可查看的图表和预览内容。"],
+        ];
+
+        let timer = null;
+
+        form.addEventListener("submit", function () {
+          submitButton.disabled = true;
+          submitButton.textContent = "分析中...";
+          overlay.classList.add("show");
+          overlay.setAttribute("aria-hidden", "false");
+
+          let index = 0;
+          const updateMessage = function () {
+            const current = messages[index % messages.length];
+            loadingStep.textContent = current[0];
+            loadingText.textContent = current[1];
+            index += 1;
+          };
+
+          updateMessage();
+          timer = window.setInterval(updateMessage, 1800);
+          window.addEventListener("pageshow", function () {
+            if (timer) {
+              window.clearInterval(timer);
+            }
+          }, { once: true });
+        });
+      })();
+    </script>
+  </body>
+</html>
