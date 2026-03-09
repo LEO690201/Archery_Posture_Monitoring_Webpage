@@ -1,5 +1,34 @@
-*.pt
+# python
 __pycache__/
 *.pyc
+
+# model
+*.pt
+*.pth
+*.onnx
+
+# environment
 .env
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# system
+.DS_Store
+Thumbs.db
+
+# logs
+logs/
+*.log
+
+# cache
+.cache/
+
+# agents
 AGENTS.md
+
+# app
+*.spec
